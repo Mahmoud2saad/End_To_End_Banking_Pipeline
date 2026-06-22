@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  - name: bronze
+    schema: bronze
+    tables:
+      - name: users_data
+      - name: cards_data
+      - name: atm_master
+      - name: transactions_data
+      - name: wallet
+      - name: out_of_cash
+      - name: mcc_codes
+      - name: train_fraud_labels
+
+  - name: silver
+    schema: silver
+    tables:
+      - name: users_data
+      - name: cards_data
+      - name: atm_master
+      - name: transactions_data
+      - name: wallet
+      - name: out_of_cash
+      - name: mcc_codes
+      - name: train_fraud_labels
