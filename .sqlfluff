@@ -1,0 +1,19 @@
+[sqlfluff]
+templater = dbt
+dialect = duckdb
+sql_file_exts = .sql
+
+[sqlfluff:templater:dbt]
+project_dir = ./Banking_dbt
+profiles_dir = ./Banking_dbt
+
+# Long identifiers are common here (surrogate keys, generated test names) --
+# don't fail lint on line length alone.
+[sqlfluff:rules:layout.long_lines]
+ignore_comment_lines = true
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.identifiers]
+extended_capitalisation_policy = lower

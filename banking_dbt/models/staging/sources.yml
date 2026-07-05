@@ -1,26 +1,23 @@
 version: 2
 
 sources:
-  - name: bronze
-    schema: bronze
-    tables:
-      - name: users_data
-      - name: cards_data
-      - name: atm_master
-      - name: transactions_data
-      - name: wallet
-      - name: out_of_cash
-      - name: mcc_codes
-      - name: train_fraud_labels
-
   - name: silver
-    schema: silver
+    description: "Silver layer — cleaned Delta tables"
+    schema: banking_dev
     tables:
-      - name: users_data
-      - name: cards_data
       - name: atm_master
-      - name: transactions_data
-      - name: wallet
+        description: "159 Moroccan ATMs"
+      - name: customers
+        description: "2000 customers"
+      - name: cards
+        description: "6146 cards"
+      - name: card_transactions
+        description: "ATM card transactions"
+      - name: wallet_transactions
+        description: "Mobile wallet transactions"
       - name: out_of_cash
-      - name: mcc_codes
-      - name: train_fraud_labels
+        description: "Out-of-cash events"
+      - name: kaggle_transactions
+        description: "Kaggle transactions with fraud labels"
+      - name: pan_customer_map
+        description: "PAN to customer bridge"

@@ -1,0 +1,111 @@
+# docker-compose.yml
+# Dockerized Airflow for the Banking Pipeline project (LocalExecutor —
+# single machine, sized for local dev/demo, not a multi-node deployment).
+#
+# Usage:
+#   docker compose build
+#   docker compose up airflow-init     # one-time: migrate DB + create admin user
+#   docker compose up -d
+#   open http://localhost:8080  (user: airflow / pass: airflow)
+#
+# Project layout expected on the host (this file's directory):
+#   ./airflow/dags, ./airflow/plugins   -> Airflow's dags/plugins folders
+#   ./data, ./data_simulation,
+#   ./notebooks, ./banking_dbt,
+#   ./local_warehouse                   -> mounted together as the single
+#                                          BANKING_PIPELINE_HOME root the
+#                                          DAGs reference (see env below)
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: utc
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    # Single root the DAGs use to locate scripts/dbt project — see
+    # airflow/dags/*.py, all of which read this instead of hardcoding paths.
+    BANKING_PIPELINE_HOME: /opt/airflow/banking_pipeline
+    ENV: local
+    SPARK_MASTER: local[*]
+    DBT_TARGET: dev
+    LOG_LEVEL: INFO
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./airflow/logs:/opt/airflow/logs
+    - ./data_simulation:/opt/airflow/banking_pipeline/data_simulation
+    - ./notebooks:/opt/airflow/banking_pipeline/notebooks
+    - ./banking_dbt:/opt/airflow/banking_pipeline/banking_dbt
+    - ./data:/opt/airflow/banking_pipeline/data
+    - ./local_warehouse:/opt/airflow/banking_pipeline/local_warehouse
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on: &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username airflow --password airflow \
+          --firstname Banking --lastname Pipeline \
+          --role Admin --email admin@example.com || true
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres-db-volume:

@@ -1,0 +1,55 @@
+﻿name: banking_dbt
+version: "1.0.0"
+config-version: 2
+
+profile: banking_local
+
+on-run-start:
+  - "{{ register_silver_sources() }}"
+
+model-paths: ["models"]
+snapshot-paths: ["snapshots"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  banking_dbt:
+    staging:
+      +materialized: view
+      +schema: staging
+      +tags: ["staging"]
+    marts:
+      dimensions:
+        +materialized: table
+        +schema: marts
+        +tags: ["marts", "dimensions"]
+      facts:
+        +materialized: incremental
+        +schema: marts
+        +tags: ["marts", "facts"]
+        +incremental_strategy: merge
+      gold:
+        +materialized: table
+        +schema: marts
+        +tags: ["marts", "gold"]
+
+snapshots:
+  banking_dbt:
+    +target_schema: snapshots
+    +strategy: timestamp
+    +updated_at: _silver_loaded_at
+
+seeds:
+  banking_dbt:
+    +schema: seeds
+
+vars:
+  fraud_amount_threshold: 2000
+  high_risk_fraud_rate: 0.05
+  lookback_days: 30
+  bank_name: "Attijariwafa Bank"
+  country: "Morocco"
+  currency: "MAD"

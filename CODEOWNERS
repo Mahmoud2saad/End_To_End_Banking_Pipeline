@@ -1,0 +1,29 @@
+﻿# CODEOWNERS
+#
+# Requires review from the listed owner(s) before a PR touching these paths
+# can merge -- pairs with branch protection rules configured in GitHub repo
+# settings (Settings -> Branches -> Require pull request reviews -> Require
+# review from Code Owners). This file alone does nothing without that
+# branch protection setting also being turned on.
+#
+# Replace @Mahmoud2Saad below with your actual GitHub handle (or a
+# team handle, once this isn't a solo project) before relying on this.
+
+# Default owner for anything not matched below
+*                           @Mahmoud2Saad
+
+# dbt models -- the core data modeling layer
+/Banking_dbt/                @Mahmoud2Saad
+
+# Kafka streaming layer
+/kafka/                       @Mahmoud2Saad
+
+# Airflow orchestration
+/airflow/                     @Mahmoud2Saad
+
+# Security/governance docs -- changes here matter more than average
+/docs/SECURITY_AND_GOVERNANCE.md   @Mahmoud2Saad
+/docs/DR_RUNBOOK.md                @Mahmoud2Saad
+
+# CI/CD workflows themselves
+/.github/workflows/           @Mahmoud2Saad

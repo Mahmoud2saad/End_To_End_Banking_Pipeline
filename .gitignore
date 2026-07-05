@@ -1,0 +1,12 @@
+﻿.venv/
+__pycache__/
+*.pyc
+data/
+local_warehouse/
+backups/
+logs/
+target/
+dbt_packages/
+.env
+*.duckdb
+*.duckdb.wal

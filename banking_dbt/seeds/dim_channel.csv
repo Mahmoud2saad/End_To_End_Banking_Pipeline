@@ -1,0 +1,6 @@
+channel_key,channel_code,channel_name,channel_description,is_digital,is_atm
+1,CARD_ATM,Card ATM,Physical ATM card transaction,false,true
+2,MOBILE_WALLET,Mobile Wallet,Mobile wallet transaction via ATM,true,true
+3,CARD_POS,Card POS,Card transaction at point of sale,false,false
+4,ONLINE,Online,Online card transaction,true,false
+5,CARD_SWIPE,Card Swipe,Magnetic stripe card transaction,false,false

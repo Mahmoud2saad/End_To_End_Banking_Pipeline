@@ -1,0 +1,11 @@
+error_type_key,error_code,error_description,error_category,is_fraud_related,is_atm_related
+1,0,Success,SUCCESS,false,true
+2,96,ATM Out of Cash,OPERATIONAL,false,true
+3,51,Insufficient Funds,DECLINED,false,true
+4,14,Invalid Card Number,DECLINED,true,true
+5,61,Withdrawal Limit Exceeded,DECLINED,false,true
+6,43,Card Reported Stolen,FRAUD,true,true
+7,54,Expired Card,DECLINED,false,true
+8,57,Transaction Not Permitted,DECLINED,false,true
+9,91,Bank System Unavailable,TECHNICAL,false,true
+10,,No Error,SUCCESS,false,false

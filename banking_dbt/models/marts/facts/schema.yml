@@ -1,0 +1,210 @@
+version: 2
+
+models:
+  - name: fact_atm_transactions
+    description: "ATM card transaction fact table — incremental merge on transaction_date"
+    columns:
+      - name: atm_transaction_key
+        description: "Surrogate key (MD5 of refnum)"
+        tests: [not_null, unique]
+      - name: refnum
+        description: "Natural key — proves the grain independently of the surrogate key"
+        tests: [not_null, unique]
+      - name: atm_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_atm')
+              field: atm_key
+      - name: customer_key
+        tests:
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_key
+      - name: geography_key
+        description: "Wired via dim_atm's region -> dim_geography join (Phase 1 fix — previously dim_geography was built but never joined into any fact)"
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+      - name: pan_key
+        description: "Wired via pan_customer_map on client_id (Phase 1 fix). Legitimate here because stg_atm_transactions and pan_customer_map share the same Moroccan client_id universe — deliberately NOT done on fact_card_transactions, see that model's note below."
+        tests:
+          - relationships:
+              to: ref('pan_customer_map')
+              field: pan_key
+      - name: channel_key
+        tests:
+          - relationships:
+              to: ref('dim_channel')
+              field: channel_key
+      - name: error_type_key
+        tests:
+          - relationships:
+              to: ref('dim_error_type')
+              field: error_type_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: amount_mad
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: is_successful
+        tests: [not_null]
+      - name: is_reversal
+        tests: [not_null]
+      - name: is_deposit
+        tests: [not_null]
+      - name: is_out_of_cash
+        tests: [not_null]
+      - name: transaction_date
+        tests: [not_null]
+
+  - name: fact_card_transactions
+    description: >
+      Kaggle card transaction fact table with fraud labels — incremental
+      merge on transaction_date. NOTE: this table intentionally does NOT
+      carry a pan_key. It is built from stg_transactions (the Kaggle
+      dataset), whose client_id/card_id values belong to a different
+      synthetic universe than pan_customer_map (which is built from the
+      Moroccan cards.csv source). Joining them would create a fabricated
+      relationship — coincidental ID collisions presented as a real FK.
+      The genuinely Moroccan card-transaction source (stg_card_transactions,
+      with real PANs) is currently orphaned from any fact table — see
+      repo notes for that separate, larger gap.
+    columns:
+      - name: card_transaction_key
+        description: "Surrogate key (MD5 of transaction_id)"
+        tests: [not_null, unique]
+      - name: transaction_id
+        description: "Natural key — proves the grain independently of the surrogate key"
+        tests: [not_null, unique]
+      - name: customer_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_key
+      - name: card_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_card')
+              field: card_key
+      - name: merchant_key
+        tests:
+          - relationships:
+              to: ref('dim_merchant')
+              field: merchant_key
+      - name: merchant_category_key
+        tests:
+          - relationships:
+              to: ref('dim_merchant_category')
+              field: merchant_category_key
+      - name: channel_key
+        tests:
+          - relationships:
+              to: ref('dim_channel')
+              field: channel_key
+      - name: error_type_key
+        tests:
+          - relationships:
+              to: ref('dim_error_type')
+              field: error_type_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: amount_mad
+        tests:
+          - not_null
+      - name: amount_abs
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: is_fraud
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+      - name: transaction_date
+        tests: [not_null]
+
+  - name: fact_wallet_transactions
+    description: "Mobile wallet transaction fact table — incremental merge on transaction_date"
+    columns:
+      - name: wallet_transaction_key
+        description: "Surrogate key (MD5 of transaction_id)"
+        tests: [not_null, unique]
+      - name: transaction_id
+        description: "Natural key — proves the grain independently of the surrogate key"
+        tests: [not_null, unique]
+      - name: atm_key
+        tests:
+          - relationships:
+              to: ref('dim_atm')
+              field: atm_key
+      - name: geography_key
+        description: "Wired via dim_atm's region -> dim_geography join (Phase 1 fix)"
+        tests:
+          - relationships:
+              to: ref('dim_geography')
+              field: geography_key
+      - name: channel_key
+        tests:
+          - relationships:
+              to: ref('dim_channel')
+              field: channel_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: amount_mad
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: is_successful
+        tests: [not_null]
+      - name: transaction_date
+        tests: [not_null]
+
+  - name: fact_out_of_cash_events
+    description: "ATM out-of-cash failure event fact table — incremental merge on transaction_date"
+    columns:
+      - name: out_of_cash_key
+        description: "Surrogate key (MD5 of refnum)"
+        tests: [not_null, unique]
+      - name: refnum
+        description: "Natural key — proves the grain independently of the surrogate key"
+        tests: [not_null, unique]
+      - name: atm_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_atm')
+              field: atm_key
+      - name: date_key
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: attempted_amount_mad
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: is_confirmed_ooc
+        tests: [not_null]
+      - name: transaction_date
+        tests: [not_null]
