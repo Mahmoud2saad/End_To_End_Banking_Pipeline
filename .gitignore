@@ -10,3 +10,5 @@ dbt_packages/
 .env
 *.duckdb
 *.duckdb.wal
+
+data/
