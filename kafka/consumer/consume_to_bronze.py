@@ -1,4 +1,4 @@
-﻿"""
+"""
 kafka/consumer/consume_to_bronze.py
 
 Consumes the domain-table topics produced by generate_events.py and writes
