@@ -1,4 +1,0 @@
-kafka-python-ng==2.2.3
-pandas==2.2.2
-pyarrow==16.1.0
-python-dotenv==1.0.1
