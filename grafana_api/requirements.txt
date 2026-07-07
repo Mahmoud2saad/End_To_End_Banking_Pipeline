@@ -1,0 +1,6 @@
+fastapi==0.115.0
+uvicorn==0.31.0
+duckdb
+numpy==2.1.1
+pandas==2.2.2
+kafka-python-ng==2.2.3
