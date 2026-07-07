@@ -34,3 +34,29 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+  kafka-consumer:
+    build:
+      context: ..
+      dockerfile: kafka/consumer/Dockerfile
+    container_name: kafka-consumer
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      # Overrides the host-facing localhost:9094 from .env -- inside the
+      # Docker network, the broker is reached via its internal listener
+      # at kafka:9092 (same one kafka-ui already uses), not the
+      # EXTERNAL://localhost:9094 listener meant for host-side scripts.
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+    volumes:
+      # Mounts your REAL local_warehouse/ (relative to this compose file's
+      # own directory, i.e. project_root/local_warehouse) into the
+      # container at the same relative path config.py expects -- so this
+      # containerized consumer writes into the exact same landing zone
+      # your host-run Bronze DAG already reads from, not an isolated copy
+      # sealed inside the container.
+      - ../local_warehouse:/app/local_warehouse
+    depends_on:
+      kafka:
+        condition: service_healthy
+
