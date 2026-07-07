@@ -1,0 +1,61 @@
+﻿name: dbt CI
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'banking_dbt/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'banking_dbt/**'
+
+jobs:
+  dbt-compile-test:
+    name: dbt compile & test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dbt-duckdb
+        run: pip install dbt-core==1.7.4 dbt-duckdb==1.7.4
+
+      - name: Create CI profiles.yml
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << 'EOF'
+          banking_dbt:
+            target: ci
+            outputs:
+              ci:
+                type: duckdb
+                path: /tmp/banking_ci.duckdb
+                threads: 4
+          EOF
+
+      - name: dbt deps
+        working-directory: banking_dbt
+        run: dbt deps
+
+      - name: dbt compile
+        working-directory: banking_dbt
+        run: dbt compile --target ci
+
+      - name: dbt test (schema + data quality)
+        working-directory: banking_dbt
+        run: dbt test --target ci
+
+      - name: Upload dbt logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-logs
+          path: banking_dbt/logs/
