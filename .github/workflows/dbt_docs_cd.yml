@@ -1,1 +1,83 @@
-﻿<paste the full file content here>
+name: dbt Docs CD
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'banking_dbt/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy-dbt-docs:
+    name: Build & deploy dbt docs
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dbt-duckdb
+        run: pip install dbt-core==1.7.4 dbt-duckdb==1.7.4
+
+      - name: Create CI profiles.yml
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << 'EOF'
+          banking_dbt:
+            target: ci
+            outputs:
+              ci:
+                type: duckdb
+                path: /tmp/banking_ci.duckdb
+                threads: 4
+          EOF
+
+      - name: dbt deps
+        working-directory: banking_dbt
+        run: dbt deps
+
+      - name: dbt compile
+        working-directory: banking_dbt
+        run: dbt compile --target ci
+
+      - name: dbt docs generate
+        working-directory: banking_dbt
+        run: dbt docs generate --target ci
+
+      - name: Move docs to output folder
+        run: |
+          mkdir -p docs_site
+          cp banking_dbt/target/index.html docs_site/
+          cp banking_dbt/target/catalog.json docs_site/
+          cp banking_dbt/target/manifest.json docs_site/
+          cp banking_dbt/target/graph.gpickle docs_site/ 2>/dev/null || true
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload docs artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs_site/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4﻿
