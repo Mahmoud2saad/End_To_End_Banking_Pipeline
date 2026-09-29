@@ -1,6 +1,6 @@
-# 🏦 End-to-End Banking Pipeline
+# 🏦 End-to-End Banking Data Platform
 
-> A production-grade data engineering platform built for banking analytics. Runs fully **local** (DuckDB + PySpark + Delta Lake) or fully **cloud** (Azure Data Lake + Databricks), with real-time streaming via **Apache Kafka**, Gold-layer transformation via **dbt**, orchestration via **Apache Airflow**, a custom **FastAPI observability layer**, and monitoring via **Grafana**.
+> A production-style data engineering platform for banking analytics. The **same dbt models** run on three targets, switched by a single environment variable: **Local** (DuckDB + PySpark + Delta Lake), **Snowflake**, and **Microsoft Fabric** (Fabric Warehouse → Power BI semantic model with dynamic Row-Level Security). Real-time ingestion via **Apache Kafka**, Gold-layer modeling via **dbt**, orchestration via **Apache Airflow**, a custom **FastAPI observability layer**, and monitoring via **Grafana**.
 
 ---
 
@@ -12,11 +12,12 @@
 - [Tech Stack](#tech-stack)
 - [Data Model](#data-model)
 - [Medallion Layers](#medallion-layers)
+- [Microsoft Fabric: Warehouse, Semantic Model & RLS](#microsoft-fabric-warehouse-semantic-model--rls)
 - [Airflow Orchestration](#airflow-orchestration)
 - [Kafka Streaming](#kafka-streaming)
 - [Grafana API & Observability](#grafana-api--observability)
 - [CI/CD](#cicd)
-- [Cloud Deployment](#cloud-deployment-azure--databricks)
+- [Running on Snowflake and Fabric](#running-on-snowflake-and-fabric)
 - [Local Setup](#local-setup-docker--airflow)
 - [Environment Variables](#environment-variables)
 - [DAG Reference](#dag-reference)
@@ -30,7 +31,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│                         BANKING PIPELINE — HYBRID ARCHITECTURE                   │
+│                     BANKING PLATFORM — ONE CODEBASE, THREE TARGETS               │
 │                                                                                  │
 │  ┌──────────────┐    ┌───────────────────────────────────────────────────────┐   │
 │  │  CSV Sources │───▶│              APACHE KAFKA (Real-time)                 │   │
@@ -45,25 +46,32 @@
 │           │               BRONZE LAYER  (Raw Delta / Parquet)                │   │
 │           │         Schema enforcement · Append-only · Full audit trail      │   │
 │           └───────────────────────────────┬──────────────────────────────────┘   │
-│                                           │ PySpark / Databricks                 │
+│                                           │ PySpark                              │
 │           ┌───────────────────────────────▼──────────────────────────────────┐   │
 │           │               SILVER LAYER  (Cleaned Delta Tables)               │   │
 │           │   Deduplication · Type casting · Null handling · SCD tracking    │   │
 │           └───────────────────────────────┬──────────────────────────────────┘   │
-│                                           │ dbt (DuckDB / Databricks)            │
+│                                           │ dbt (same models on every target)    │
 │           ┌───────────────────────────────▼──────────────────────────────────┐   │
 │           │               GOLD LAYER  (Dimensional Model / Marts)            │   │
 │           │  dim_* · fact_* · ATM Performance · Fraud Risk · Spending KPIs   │   │
-│           └───────────────────────────────┬──────────────────────────────────┘   │
-│                                           │                                      │
-│  ┌─────────────────┐   ┌─────────────────▼──────────┐   ┌───────────────────┐   │
-│  │ FastAPI          │   │   DuckDB / Snowflake        │   │ Grafana Dashboards│   │
-│  │ Observability   │   │   (Analytical Warehouse)    │   │ (via Infinity DS) │   │
-│  │ /backup-health  │   └────────────────────────────┘    └───────────────────┘   │
-│  │ /freshness      │                                                              │
-│  │ /kafka-lag      │                                                              │
-│  │ /pipeline-health│                                                              │
-│  └─────────────────┘                                                              │
+│           └──────┬─────────────────────┬─────────────────────┬───────────────┘   │
+│                  │                     │                     │                   │
+│        ┌─────────▼────────┐  ┌─────────▼────────┐  ┌─────────▼────────────┐      │
+│        │ LOCAL            │  │ SNOWFLAKE        │  │ MICROSOFT FABRIC     │      │
+│        │ DuckDB           │  │ Snowflake DWH    │  │ Fabric Warehouse     │      │
+│        └─────────┬────────┘  └──────────────────┘  │        │             │      │
+│                  │                                 │        ▼             │      │
+│                  │                                 │ Power BI Semantic    │      │
+│                  │                                 │ Model + Dynamic RLS  │      │
+│                  │                                 └──────────────────────┘      │
+│  ┌───────────────▼─────┐                                                         │
+│  │ FastAPI Observability│──▶ Grafana Dashboards (Infinity datasource)            │
+│  │ /backup-health       │                                                        │
+│  │ /freshness           │                                                        │
+│  │ /kafka-lag           │                                                        │
+│  │ /pipeline-health     │                                                        │
+│  └──────────────────────┘                                                        │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -73,11 +81,13 @@
 
 | Feature | Details |
 |---|---|
-| **Hybrid execution** | Toggle `ENV=local` (DuckDB + local Spark) or `ENV=cloud` (Azure ADLS + Databricks) — same DAGs, same dbt models |
+| **One codebase, three targets** | Switch between **Local** (DuckDB + local Spark), **Snowflake**, and **Microsoft Fabric** with one environment variable. Same DAGs, same dbt models |
 | **Medallion architecture** | Landing → Bronze → Silver → Gold with strict layer contracts |
-| **Real-time streaming** | Apache Kafka ingests card transactions, ATM events, customers, wallets from real CSV sources |
+| **Real-time streaming** | Apache Kafka ingests card transactions, ATM events, customers, and wallets from real CSV sources |
 | **PAN tokenization** | Card numbers are HMAC-SHA256 tokenized at the producer; CVV is never published |
-| **dbt Gold layer** | 7 dimensions, 4 fact tables, 6 analytics marts — all tested with dbt's built-in quality suite |
+| **dbt Gold layer** | 7 dimensions, 4 fact tables, 6 analytics marts, all tested with dbt's built-in quality suite |
+| **Fabric serving layer** | Star-schema Gold layer served from a **Fabric Warehouse** into a **Power BI semantic model** |
+| **Dynamic Row-Level Security** | `USERPRINCIPALNAME()`-based RLS: each user sees only their authorized data from one shared model |
 | **Orchestration** | Apache Airflow 2.8.1 with ExternalTaskSensor chaining, email alerting, and custom operators |
 | **FastAPI observability** | `/backup-health`, `/freshness`, `/kafka-lag`, `/pipeline-health` endpoints with SLO tracking |
 | **Grafana monitoring** | 15+ API endpoints feed live Grafana dashboards via the Infinity datasource |
@@ -108,7 +118,7 @@ Banking_Pipeline/
 │       ├── spark_operator.py        # SparkSubmitLocalOperator
 │       └── dbt_operator.py          # DbtOperator wrapping dbt CLI
 │
-├── banking_dbt/                     # dbt project
+├── banking_dbt/                     # dbt project (one project, three targets)
 │   ├── models/
 │   │   ├── staging/                 # Cleaned Silver views
 │   │   └── marts/
@@ -138,7 +148,7 @@ Banking_Pipeline/
 │
 ├── notebooks/
 │   ├── local/                       # PySpark: landing → Bronze → Silver (local)
-│   └── cloud/                       # Databricks: ADLS → Bronze → Silver
+│   └── cloud/                       # Cloud notebooks: Bronze → Silver
 │
 ├── docs/
 │   ├── SLOS.md                      # Service Level Objectives
@@ -161,19 +171,19 @@ Banking_Pipeline/
 
 ## Tech Stack
 
-| Layer | Local | Cloud |
-|---|---|---|
-| Storage | Delta Lake (local FS) | Azure Data Lake Storage Gen2 |
-| Processing | PySpark 3.4 (`local[*]`) | Azure Databricks |
-| Warehouse | DuckDB 1.5 | Snowflake |
-| Transformation | dbt-duckdb 1.7 | dbt-databricks 1.7 |
-| Streaming | Apache Kafka (Docker) | Azure Event Hubs (Kafka-compatible) |
-| Orchestration | Apache Airflow 2.8.1 | Apache Airflow 2.8.1 |
-| Observability | FastAPI + custom endpoints | FastAPI + custom endpoints |
-| Monitoring | Grafana + Infinity datasource | Grafana |
-| Data Quality | Great Expectations 0.18 | Great Expectations 0.18 |
-| CI | GitHub Actions (dbt compile + test) | GitHub Actions |
-| CD | GitHub Pages (dbt docs) | GitHub Pages |
+| Layer | Local | Snowflake | Microsoft Fabric |
+|---|---|---|---|
+| Warehouse | DuckDB 1.5 | Snowflake | Fabric Warehouse |
+| Transformation | dbt-duckdb 1.7 | dbt-snowflake | dbt (Fabric adapter) |
+| Semantic layer / BI | Grafana (via FastAPI) | Power BI / Grafana | Power BI semantic model + dynamic RLS |
+| Storage | Delta Lake (local FS) | Azure Data Lake Storage Gen2 | Azure Data Lake Storage Gen2 |
+| Processing | PySpark 3.4 (`local[*]`) | Azure Databricks | Azure Databricks |
+| Streaming | Apache Kafka (Docker) | Apache Kafka / Azure Event Hubs (Kafka-compatible) | Apache Kafka / Azure Event Hubs (Kafka-compatible) |
+| Orchestration | Apache Airflow 2.8.1 | Apache Airflow 2.8.1 | Apache Airflow 2.8.1 |
+| Observability | FastAPI + custom endpoints | FastAPI + custom endpoints | FastAPI + custom endpoints |
+| Monitoring | Grafana + Infinity datasource | Grafana | Grafana |
+| Data Quality | Great Expectations 0.18 | Great Expectations 0.18 | Great Expectations 0.18 |
+| CI / CD | GitHub Actions + GitHub Pages | GitHub Actions + GitHub Pages | GitHub Actions + GitHub Pages |
 
 ---
 
@@ -196,24 +206,54 @@ Banking_Pipeline/
 **Facts:** `fact_card_transactions` · `fact_atm_transactions` · `fact_wallet_transactions` · `fact_out_of_cash_events`
 
 **Analytics Marts:**
-- `atm_performance` — utilisation rates, cash cycle times, failure rates, performance grade (A–D) per ATM per day
-- `fraud_risk_scoring` — rule-based fraud score (0–100) per customer: dark web cards, fraud rate, behavioral signals
-- `customer_spending_behavior` — RFM scoring, channel preferences, spend-to-income ratio, activity level
-- `replenishment_analysis` — cash utilisation %, urgency (CRITICAL / HIGH / MEDIUM / LOW), OOC events per ATM
-- `channel_comparison` — ATM vs card vs wallet volume and success rate by hour and time-of-day
-- `governorate_summary` — regional transaction heatmap for operations dashboards
+- `atm_performance`: utilisation rates, cash cycle times, failure rates, performance grade (A–D) per ATM per day
+- `fraud_risk_scoring`: rule-based fraud score (0–100) per customer: dark web cards, fraud rate, behavioral signals
+- `customer_spending_behavior`: RFM scoring, channel preferences, spend-to-income ratio, activity level
+- `replenishment_analysis`: cash utilisation %, urgency (CRITICAL / HIGH / MEDIUM / LOW), OOC events per ATM
+- `channel_comparison`: ATM vs card vs wallet volume and success rate by hour and time-of-day
+- `governorate_summary`: regional transaction heatmap for operations dashboards
 
 ---
 
 ## Medallion Layers
 
-**Landing Zone** — Raw Parquet files from the Kafka consumer or stream simulator, partitioned by `ingestion_date`. No schema enforcement; append-only.
+**Landing Zone**: raw Parquet files from the Kafka consumer or stream simulator, partitioned by `ingestion_date`. No schema enforcement; append-only.
 
-**Bronze Layer** — PySpark reads landing zone, enforces schema, adds audit columns (`_source_file`, `_ingested_at`, `_pipeline_run_id`), writes immutable Delta tables. No deduplication.
+**Bronze Layer**: PySpark reads the landing zone, enforces schema, adds audit columns (`_source_file`, `_ingested_at`, `_pipeline_run_id`), and writes immutable Delta tables. No deduplication.
 
-**Silver Layer** — PySpark deduplicates on natural keys, applies type casting, null handling, standardised column naming, and SCD Type 2 tracking markers.
+**Silver Layer**: PySpark deduplicates on natural keys, applies type casting, null handling, standardised column naming, and SCD Type 2 tracking markers.
 
-**Gold Layer** — dbt runs `seed → snapshot → staging → marts → test`. All models materialised as tables in DuckDB locally. dbt tests cover: not-null, unique, referential integrity, accepted values, and custom assertions.
+**Gold Layer**: dbt runs `seed → snapshot → staging → marts → test`. The same models are materialised as tables on whichever target is active (DuckDB, Snowflake, or Fabric Warehouse). dbt tests cover not-null, unique, referential integrity, accepted values, and custom assertions.
+
+---
+
+## Microsoft Fabric: Warehouse, Semantic Model & RLS
+
+On the Fabric target, the dbt Gold layer is written to a **Fabric Warehouse** as a star schema (dimensions + facts). A **Power BI semantic model** sits on top of it and is the single governed layer that reports and dashboards connect to.
+
+```
+dbt Gold (star schema)  ──▶  Fabric Warehouse  ──▶  Power BI Semantic Model  ──▶  Reports
+                                                        │
+                                                        └── Dynamic RLS (USERPRINCIPALNAME())
+```
+
+### Dynamic Row-Level Security
+
+Instead of maintaining one model or one role per team, the platform uses **one shared semantic model** with a single dynamic role. Access is driven by data: a security mapping table links each user's sign-in (UPN) to the rows they are allowed to see, and the role filters on the signed-in user at query time.
+
+```DAX
+-- Role filter applied on the security mapping table
+[UserEmail] = USERPRINCIPALNAME()
+```
+
+The mapping table relates to the relevant dimension (e.g. geography / ATM region) so the filter propagates through the star schema to the fact tables. Result: every user opens the same report and sees only their authorized data, and adding or removing access is a data change, not a model change.
+
+<!-- TODO: replace the example above with the actual mapping table name, the dimension it filters, and the relationship direction used in your model. -->
+
+**Design notes**
+- Star schema keeps the security filter path short and predictable (mapping table → dimension → fact).
+- RLS is defined once in the semantic model, so it applies to every report built on it.
+- Access management stays in data (the mapping table), which keeps it auditable.
 
 ---
 
@@ -238,8 +278,8 @@ Banking_Pipeline/
 `05_kafka_streaming` manages Kafka producer and consumer lifecycle.
 
 ### Custom Operators
-- `SparkSubmitLocalOperator` — runs PySpark scripts as subprocesses with `JAVA_HOME` and `PYTHONPATH` injection
-- `DbtOperator` — wraps `dbt run / test / seed / snapshot` with profiles and project dir overrides
+- `SparkSubmitLocalOperator`: runs PySpark scripts as subprocesses with `JAVA_HOME` and `PYTHONPATH` injection
+- `DbtOperator`: wraps `dbt run / test / seed / snapshot` with profiles and project dir overrides
 
 ### Alerting
 Every DAG sends email alerts on failure via Outlook SMTP. Success notifications include table counts and run metadata.
@@ -263,9 +303,9 @@ The Kafka layer streams **real domain data** from the same CSV files the rest of
 | `banking.dev.kaggle_transactions` | `data/kaggle/transactions_data.csv` |
 
 ### Throughput Modes (via `SIMULATOR_MODE` in `.env`)
-- `demo` — caps each table at `SIMULATOR_LIMIT_ROWS` (default 2000). Finishes in seconds.
-- `realistic` — no row cap, shorter inter-batch delay.
-- `full` — complete replay of all rows. Use deliberately; large datasets take time.
+- `demo`: caps each table at `SIMULATOR_LIMIT_ROWS` (default 2000). Finishes in seconds.
+- `realistic`: no row cap, shorter inter-batch delay.
+- `full`: complete replay of all rows. Use deliberately; large datasets take time.
 
 ### Security
 - PAN and `card_number` are HMAC-SHA256 tokenized **before** reaching any Kafka topic
@@ -315,7 +355,7 @@ python -m uvicorn grafana_api.main:app --host 0.0.0.0 --port 8000 --reload
 | `GET /channel-comparison/by-time` | Channel performance by time of day |
 | `GET /customer-spending` | Spending profile per customer |
 | `GET /customer-spending/summary` | Customer segments summary |
-| `GET /governorate-summary` | Regional roll-up by Moroccan governorate |
+| `GET /governorate-summary` | Regional roll-up by governorate |
 
 ### Observability Endpoints (SLO-tracked)
 
@@ -330,7 +370,7 @@ python -m uvicorn grafana_api.main:app --host 0.0.0.0 --port 8000 --reload
 
 ## CI/CD
 
-### CI — dbt compile + test (`.github/workflows/dbt_ci.yml`)
+### CI: dbt compile + test (`.github/workflows/dbt_ci.yml`)
 
 Triggers on every push or pull request to `main`/`dev` that touches `banking_dbt/`. Spins up a fresh Ubuntu runner, installs `dbt-duckdb`, and runs:
 
@@ -340,7 +380,7 @@ dbt deps → dbt compile → dbt test
 
 Failing models upload dbt logs as a downloadable GitHub Actions artifact.
 
-### CD — dbt docs to GitHub Pages (`.github/workflows/dbt_docs_cd.yml`)
+### CD: dbt docs to GitHub Pages (`.github/workflows/dbt_docs_cd.yml`)
 
 Triggers on every push to `main` that touches `banking_dbt/`. Generates the full dbt docs site and deploys it automatically to GitHub Pages.
 
@@ -348,16 +388,33 @@ Triggers on every push to `main` that touches `banking_dbt/`. Generates the full
 
 ---
 
-## Cloud Deployment (Azure + Databricks)
+## Running on Snowflake and Fabric
 
-Set `ENV=cloud` in `.env` to activate the cloud path.
+The target is selected with the `ENV` variable in `.env`. The DAGs, dbt models, and tests are identical on every target; only the connection profile changes.
+
+<!-- TODO: confirm the exact ENV values and dbt target names used in your repo (e.g. local / snowflake / fabric) and update the table below. -->
+
+| `ENV` | Warehouse | Notes |
+|---|---|---|
+| `local` | DuckDB | Everything runs in Docker on your machine. No cloud account needed |
+| `snowflake` | Snowflake | Set the `SNOWFLAKE_*` variables; dbt targets Snowflake |
+| `fabric` | Fabric Warehouse | Set the `FABRIC_*` variables; dbt writes the Gold layer to the Fabric Warehouse, then connect the Power BI semantic model to it |
+
+### Cloud storage and processing (Azure)
 
 1. Provision Azure Data Lake Storage Gen2 with hierarchical namespace enabled
 2. Create containers: `landing`, `bronze`, `silver`, `gold`
 3. Create a Databricks workspace and configure a cluster with Delta Lake and dbt
 4. Set all `AZURE_*` and `DATABRICKS_*` variables in `.env`
 5. DAGs `01_bronze_cloud.py` and `02_silver_cloud.py` run as Databricks jobs via `databricks-sdk`
-6. dbt targets Databricks via `dbt-databricks` — same models, same tests
+
+### Fabric serving layer
+
+1. Create a Fabric workspace and a Warehouse
+2. Set the `FABRIC_*` variables in `.env` and run the `03_dbt_gold` DAG with `ENV=fabric`
+3. Create the Power BI semantic model on the Warehouse (star-schema relationships between facts and dimensions)
+4. Add the security mapping table and the dynamic RLS role (see [RLS](#dynamic-row-level-security))
+5. Publish, then assign users to the role
 
 ---
 
@@ -419,7 +476,7 @@ docker compose down -v    # wipe DB and start fresh
 
 | Variable | Required | Description |
 |---|---|---|
-| `ENV` | Yes | `local` or `cloud` |
+| `ENV` | Yes | Target selector: `local`, `snowflake`, or `fabric` |
 | `ALERT_EMAIL` | Yes | Airflow failure email recipient |
 | `OUTLOOK_PASSWORD` | Yes (local) | SMTP password for Outlook |
 | `DUCKDB_PATH` | Optional | Path to DuckDB warehouse file |
@@ -428,6 +485,8 @@ docker compose down -v    # wipe DB and start fresh
 | `SIMULATOR_LIMIT_ROWS` | Optional | Row cap per table in demo mode (default 2000) |
 | `KAFKA_TOPIC_PREFIX` | Optional | Topic namespace (default `banking.dev`) |
 | `KAFKA_RETENTION_HOURS` | Optional | Kafka log retention for replay recovery |
+| `SNOWFLAKE_*` | Snowflake only | Account, user, password/key, warehouse, database, role |
+| `FABRIC_*` | Fabric only | Warehouse server/endpoint, database, and service principal credentials |
 | `AZURE_STORAGE_ACCOUNT_NAME` | Cloud only | ADLS Gen2 account name |
 | `AZURE_STORAGE_ACCOUNT_KEY` | Cloud only | ADLS access key |
 | `AZURE_TENANT_ID` | Cloud only | Azure AD tenant |
@@ -436,6 +495,8 @@ docker compose down -v    # wipe DB and start fresh
 | `DATABRICKS_HOST` | Cloud only | Databricks workspace URL |
 | `DATABRICKS_TOKEN` | Cloud only | Personal access token |
 | `DATABRICKS_CLUSTER_ID` | Cloud only | Interactive cluster ID |
+
+<!-- TODO: replace SNOWFLAKE_* and FABRIC_* with the exact variable names from .env.example. -->
 
 ---
 
@@ -463,6 +524,8 @@ Defined in `docs/SLOS.md` and monitored via the observability API:
 | Landing file freshness per domain | < 15 minutes (during active streaming) |
 | Kafka consumer lag per topic | < 500 messages |
 
+Disaster-recovery procedures are documented and tested in `docs/DR_RUNBOOK.md`.
+
 ---
 
 ## Troubleshooting
@@ -489,7 +552,10 @@ Use `python -m uvicorn` to avoid PATH resolution issues on Windows.
 Start Kafka first: `cd kafka && docker compose up -d`
 
 **dbt version conflict with Airflow's `sqlparse`**
-Stay on `dbt-core==1.7.4` — Airflow 2.8.1 pins `sqlparse==0.4.4` which is incompatible with dbt-core 1.8+.
+Stay on `dbt-core==1.7.4`. Airflow 2.8.1 pins `sqlparse==0.4.4`, which is incompatible with dbt-core 1.8+.
+
+**RLS shows no data for a user**
+Check that the user's sign-in (UPN) exists in the security mapping table and matches exactly, and that the user is assigned to the RLS role in the semantic model.
 
 ---
 
