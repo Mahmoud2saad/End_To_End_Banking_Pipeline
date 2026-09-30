@@ -83,7 +83,7 @@
 |---|---|
 | **One codebase, three targets** | Switch between **Local** (DuckDB + local Spark), **Snowflake**, and **Microsoft Fabric** with one environment variable. Same DAGs, same dbt models |
 | **Medallion architecture** | Landing → Bronze → Silver → Gold with strict layer contracts |
-| **Real-time streaming** | Apache Kafka ingests card transactions, ATM events, customers, and wallets from real CSV sources |
+| **Real-time streaming** | Apache Kafka ingests card transactions, ATM events, customers, and wallets from CSV sources |
 | **PAN tokenization** | Card numbers are HMAC-SHA256 tokenized at the producer; CVV is never published |
 | **dbt Gold layer** | 7 dimensions, 4 fact tables, 6 analytics marts, all tested with dbt's built-in quality suite |
 | **Fabric serving layer** | Star-schema Gold layer served from a **Fabric Warehouse** into a **Power BI semantic model** |
@@ -142,7 +142,7 @@ Banking_Pipeline/
 ├── grafana_dashboards/              # Pre-built Grafana dashboard JSON exports
 │
 ├── kafka/
-│   ├── producer/generate_events.py  # Streams real CSV data to Kafka topics
+│   ├── producer/generate_events.py  # Streams CSV data to Kafka topics
 │   ├── consumer/consume_to_bronze.py # Writes Kafka messages to landing zone Parquet
 │   └── docker-compose.yml           # Kafka broker + Kafka UI
 │
@@ -188,6 +188,8 @@ Banking_Pipeline/
 ---
 
 ## Data Model
+
+> **Data note:** all data in this project is simulated (Faker-generated synthetic banking data) plus a public fraud-labeled Kaggle dataset. No real customer data is used.
 
 ### Source Domains
 
@@ -248,8 +250,6 @@ Instead of maintaining one model or one role per team, the platform uses **one s
 
 The mapping table relates to the relevant dimension (e.g. geography / ATM region) so the filter propagates through the star schema to the fact tables. Result: every user opens the same report and sees only their authorized data, and adding or removing access is a data change, not a model change.
 
-<!-- TODO: replace the example above with the actual mapping table name, the dimension it filters, and the relationship direction used in your model. -->
-
 **Design notes**
 - Star schema keeps the security filter path short and predictable (mapping table → dimension → fact).
 - RLS is defined once in the semantic model, so it applies to every report built on it.
@@ -288,7 +288,7 @@ Every DAG sends email alerts on failure via Outlook SMTP. Success notifications 
 
 ## Kafka Streaming
 
-The Kafka layer streams **real domain data** from the same CSV files the rest of the pipeline uses, writing output into the exact landing-zone paths that `01_bronze_local.py` already ingests. Nothing downstream changes.
+The Kafka layer streams domain data from the same CSV files the rest of the pipeline uses, writing output into the same landing-zone paths that the local Bronze job already ingests. Nothing downstream changes.
 
 ### Topics
 
@@ -380,6 +380,8 @@ dbt deps → dbt compile → dbt test
 
 Failing models upload dbt logs as a downloadable GitHub Actions artifact.
 
+> CI validates the models on the **DuckDB** target. The Snowflake and Fabric targets use the same models with a different connection profile.
+
 ### CD: dbt docs to GitHub Pages (`.github/workflows/dbt_docs_cd.yml`)
 
 Triggers on every push to `main` that touches `banking_dbt/`. Generates the full dbt docs site and deploys it automatically to GitHub Pages.
@@ -390,9 +392,7 @@ Triggers on every push to `main` that touches `banking_dbt/`. Generates the full
 
 ## Running on Snowflake and Fabric
 
-The target is selected with the `ENV` variable in `.env`. The DAGs, dbt models, and tests are identical on every target; only the connection profile changes.
-
-<!-- TODO: confirm the exact ENV values and dbt target names used in your repo (e.g. local / snowflake / fabric) and update the table below. -->
+The target is selected with the `ENV` variable in `.env`. The DAGs and dbt models are the same on every target; only the connection profile changes.
 
 | `ENV` | Warehouse | Notes |
 |---|---|---|
@@ -406,7 +406,7 @@ The target is selected with the `ENV` variable in `.env`. The DAGs, dbt models, 
 2. Create containers: `landing`, `bronze`, `silver`, `gold`
 3. Create a Databricks workspace and configure a cluster with Delta Lake and dbt
 4. Set all `AZURE_*` and `DATABRICKS_*` variables in `.env`
-5. DAGs `01_bronze_cloud.py` and `02_silver_cloud.py` run as Databricks jobs via `databricks-sdk`
+5. The cloud Bronze and Silver steps run as Databricks jobs via `databricks-sdk`
 
 ### Fabric serving layer
 
@@ -496,8 +496,6 @@ docker compose down -v    # wipe DB and start fresh
 | `DATABRICKS_TOKEN` | Cloud only | Personal access token |
 | `DATABRICKS_CLUSTER_ID` | Cloud only | Interactive cluster ID |
 
-<!-- TODO: replace SNOWFLAKE_* and FABRIC_* with the exact variable names from .env.example. -->
-
 ---
 
 ## DAG Reference
@@ -524,7 +522,7 @@ Defined in `docs/SLOS.md` and monitored via the observability API:
 | Landing file freshness per domain | < 15 minutes (during active streaming) |
 | Kafka consumer lag per topic | < 500 messages |
 
-Disaster-recovery procedures are documented and tested in `docs/DR_RUNBOOK.md`.
+Disaster-recovery procedures are documented in `docs/DR_RUNBOOK.md`.
 
 ---
 
@@ -562,3 +560,5 @@ Check that the user's sign-in (UPN) exists in the security mapping table and mat
 ## Contributors
 
 Built by [Mahmoud Saad](https://github.com/Mahmoud2saad) · [Alfred Farag](https://github.com/af50) · [Mariam Safwat](https://github.com/mariamsafwa) · [Zainab Mohamed](https://github.com/Zainab-Mohammed)
+
+**Mahmoud Saad:** Kafka ingestion (including PAN tokenization), the dbt Gold layer, and the Microsoft Fabric serving layer with dynamic RLS.
